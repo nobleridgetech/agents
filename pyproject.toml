@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noble-ridge-agents"
+version = "0.1.0"
+description = "Noble Ridge AI Agent Platform"
+requires-python = ">=3.11"
+dependencies = [
+  "discord.py>=2.4",
+  "google-api-python-client>=2.0",
+  "google-auth-oauthlib>=1.0",
+  "google-auth-httplib2>=0.2",
+]
+
+[project.scripts]
+noble-ridge-agents = "noble_ridge_agents.cli:main"
+noble-ridge-discord = "noble_ridge_agents.discord_gateway:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

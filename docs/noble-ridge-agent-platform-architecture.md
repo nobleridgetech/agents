@@ -79,19 +79,20 @@ Iris v1 blocked capabilities:
 
 ## Iris V1 Workflow
 
-1. A team member asks Iris for an inbox summary, email lookup, or reply draft in Discord.
+1. A team member asks Iris for an inbox summary, email lookup, or reply draft in Discord, or the opt-in Iris monitor runs on its configured interval.
 2. The bot creates a job record and assigns it to Iris.
 3. Iris searches or reads Gmail using scoped access.
-4. Iris posts a concise result or draft into the relevant Discord thread.
+4. Iris posts a concise result, active triage artifact, or draft into the relevant Discord channel.
 5. Draft replies go to `#email-approvals` with source context, proposed text, concerns, and approval action.
-6. No email is sent in v1.
-7. The job record stores the request, tool calls, output, and approval state.
+6. Active monitor findings go to the approval channel when actionable threads are found.
+7. No email is sent and no Gmail inbox state is mutated in v1.
+8. The job record stores the request, tool calls, output, and approval state.
 
 ## Safety Rules
 
 - Do not expose tokens, `.env` values, app passwords, private keys, or OAuth credentials in Discord, logs, or generated artifacts.
 - Validate secret-bearing config by presence and shape only.
-- Do not send emails, publish social posts, change ad budgets, or deploy website changes without explicit human approval.
+- Do not send emails, archive or label Gmail messages, publish social posts, change ad budgets, or deploy website changes without explicit human approval.
 - Keep customer data separated by customer or project context.
 - Route ambiguous or cross-lane work to Artemis instead of letting multiple agents act independently.
 - Treat Themis rules as mandatory enforcement, even before Themis becomes a fully independent agent.
@@ -116,6 +117,7 @@ Iris v1 blocked capabilities:
 
 - Implement Gmail read/search.
 - Add inbox and thread summaries.
+- Add opt-in active inbox monitoring that creates auditable triage artifacts.
 - Add draft reply generation.
 - Route draft approvals through Discord.
 - Verify no-send behavior.
@@ -136,6 +138,7 @@ Iris v1 blocked capabilities:
 
 - Discord commands create tracked jobs.
 - Iris can summarize selected Gmail threads without exposing secrets.
+- Iris active monitoring creates jobs and review artifacts without mutating Gmail state.
 - Reply drafts are created as artifacts and approval requests, not sent.
 - Out-of-scope requests are rejected, parked, or routed.
 - Audit records include requester, assigned agent, tool calls, approval state, and final output.
@@ -143,7 +146,6 @@ Iris v1 blocked capabilities:
 
 ## Open Decisions
 
-- Whether `/Users/marksnel/Documents/github/nrcg/agents` should be initialized as its own Git repository or remain a project directory under a broader workspace.
 - Exact Discord server/channel names and role permissions.
 - Exact Gmail integration approach.
 - Whether Hermes remains the implementation backend after the Iris proof point.
