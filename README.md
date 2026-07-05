@@ -17,6 +17,138 @@ The first build target is Iris, the Email Admin Agent, because it gives useful b
 - **Default safety posture:** internal-first, human-approved, audit-logged.
 - **Design principle:** agents own distinct swimlanes and do not overlap responsibilities.
 
+## Current Implementation Status
+
+The repo now includes the first Python scaffold for Iris and the platform foundation:
+
+- `AGENTS.md` captures repo-specific operating rules for future AI agents.
+- `pyproject.toml` defines the Python package and test setup.
+- `src/noble_ridge_agents/jobs/schema.py` defines portable job, artifact, audit, and agent-result data structures.
+- `src/noble_ridge_agents/jobs/store.py` provides an in-memory job/audit store for local proof-of-concept runs.
+- `src/noble_ridge_agents/jobs/sqlite_store.py` provides the durable local SQLite job/audit store.
+- `src/noble_ridge_agents/policy/permissions.py` defines the initial Themis-style capability allowlist.
+- `src/noble_ridge_agents/content_safety.py` masks secret-bearing and sensitive values before CLI/Discord-ready output.
+- `src/noble_ridge_agents/tools/gmail.py` provides fake and real Gmail adapters with sending disabled.
+- `src/noble_ridge_agents/agents/iris.py` implements Iris V1 inbox summary, active inbox triage monitoring, email search, thread summary, action-item extraction, and approval-gated reply draft workflows.
+- `src/noble_ridge_agents/cli.py` provides a local Iris workflow runner and job status command.
+- `src/noble_ridge_agents/discord_gateway.py` provides the first `discord.py` gateway skeleton with env-only token loading, masked Iris slash-command handlers, SQLite job persistence, approval routing for draft replies, and an opt-in Iris inbox monitor loop.
+
+Confirmed integration direction:
+
+- **Gmail:** first real integration will use Gmail API OAuth with read-only scopes for `nobleridgetech@gmail.com`. Send scopes remain out of scope for Iris V1. Setup walkthrough: [Gmail OAuth setup](./docs/gmail-oauth-setup.md).
+- **Discord:** first Discord gateway will use Python `discord.py` so the gateway can share the Python job schema, policy layer, and Iris workflows directly.
+
+Verification command:
+
+```bash
+python -m pip install -e '.[dev]'
+pytest -q
+```
+
+Local CLI examples:
+
+```bash
+python -m noble_ridge_agents.cli iris inbox-summary --query "newer_than:7d"
+python -m noble_ridge_agents.cli iris find-email --query "from:client@example.com"
+python -m noble_ridge_agents.cli iris thread-summary --thread-id thread-123
+python -m noble_ridge_agents.cli iris action-items --thread-id thread-123
+python -m noble_ridge_agents.cli iris draft-reply --thread-id thread-123 --intent "send next steps tomorrow"
+python -m noble_ridge_agents.cli status JOB_ID
+```
+
+Real Gmail read-only CLI examples, using the local ignored OAuth token:
+
+```bash
+python -m noble_ridge_agents.cli iris inbox-summary --gmail real --token .secrets/google_token.json --query "newer_than:7d" --max-results 3
+python -m noble_ridge_agents.cli iris find-email --gmail real --token .secrets/google_token.json --query "from:client@example.com" --max-results 3
+python -m noble_ridge_agents.cli iris thread-summary --gmail real --token .secrets/google_token.json --thread-id THREAD_ID
+python -m noble_ridge_agents.cli iris action-items --gmail real --token .secrets/google_token.json --thread-id THREAD_ID
+```
+
+Discord gateway skeleton:
+
+```bash
+export NRT_DISCORD_TOKEN="..."
+export NRT_JOB_DB_PATH=".noble-ridge-agents/jobs.db"
+export NRT_GMAIL_ADAPTER="fake"  # fake first; change to real after server smoke test
+export NRT_DISCORD_IRIS_CHANNEL_ID="1521672682347692073"  # Iris channel
+export NRT_DISCORD_APPROVAL_CHANNEL_ID="123456789012345678"  # #email-approvals
+export NRT_IRIS_MONITOR_ENABLED="false"  # set true only after approval-routing is verified
+export NRT_IRIS_MONITOR_QUERY="in:inbox newer_than:1d"
+export NRT_IRIS_MONITOR_INTERVAL_SECONDS=300
+noble-ridge-discord
+```
+
+The gateway loads the Discord token only from `NRT_DISCORD_TOKEN`; token values are not logged. Runtime configuration is environment-only:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `NRT_DISCORD_TOKEN` | Discord bot token. Required to run the gateway. | none |
+| `NRT_JOB_DB_PATH` | SQLite job/audit DB path. | `.noble-ridge-agents/jobs.db` |
+| `NRT_GMAIL_ADAPTER` | Gmail adapter: `fake` or `real`. | `fake` |
+| `NRT_GMAIL_TOKEN_PATH` | OAuth token path when `NRT_GMAIL_ADAPTER=real`. | none |
+| `NRT_GMAIL_MAX_RESULTS` | Gmail API search result cap. | `10` |
+| `NRT_DISCORD_IRIS_CHANNEL_ID` | Optional channel restriction for Iris commands. Current Iris channel: `1521672682347692073`. | unrestricted |
+| `NRT_DISCORD_APPROVAL_CHANNEL_ID` | Discord channel ID for approval-routed draft replies. | fallback to invoking channel |
+| `NRT_IRIS_MONITOR_ENABLED` | Enables the active Iris inbox monitor loop when set to `true`, `1`, `yes`, or `on`. | `false` |
+| `NRT_IRIS_MONITOR_QUERY` | Gmail query used by the active monitor. | `in:inbox newer_than:1d` |
+| `NRT_IRIS_MONITOR_INTERVAL_SECONDS` | Seconds between active monitor runs. | `300` |
+
+The current slash-command group is `/iris` with:
+
+- `/iris inbox-summary`
+- `/iris find-email`
+- `/iris thread-summary`
+- `/iris action-items`
+- `/iris draft-reply` — approval-routed only; Iris V1 still does not send email.
+
+Discord command handlers persist jobs to SQLite and post masked artifact output only. Start against the real Discord server with `NRT_GMAIL_ADAPTER=fake`; switch to `real` only after slash commands and approval routing are verified.
+
+Slash commands are synced once when the bot becomes ready.
+
+The active Iris monitor creates `iris.monitor_inbox` jobs from a configured Gmail query, records the search and triage artifact in SQLite, and posts actionable threads to the approval channel. It does not send email, archive messages, label messages, mark messages read, delete messages, or otherwise mutate Gmail state in V1.
+
+Current verified test result: `41 passed`.
+
+### Iris Autostart
+
+The repo includes systemd-ready deployment templates:
+
+- `deploy/iris-discord.env.example` — copy shape for the local secret environment file.
+- `deploy/iris-discord.service` — user-level systemd unit for the Discord gateway.
+
+Local runtime secrets belong in `.secrets/iris-discord.env`, which is ignored by Git. Fill in `NRT_DISCORD_TOKEN` and `NRT_DISCORD_APPROVAL_CHANNEL_ID`, then keep the file locked down:
+
+```bash
+chmod 600 .secrets/iris-discord.env
+```
+
+The service file has been installed locally at:
+
+```text
+/home/mark/.config/systemd/user/iris-discord.service
+```
+
+After adding the real token, enable and start Iris:
+
+```bash
+systemctl --user enable iris-discord
+systemctl --user start iris-discord
+systemctl --user status iris-discord
+```
+
+Use this to follow logs:
+
+```bash
+journalctl --user -u iris-discord -f
+```
+
+To keep Iris online after reboot before login:
+
+```bash
+sudo loginctl enable-linger mark
+```
+
 ## Agent Team
 
 | Agent | Role | Owns | Does Not Own |
@@ -215,3 +347,4 @@ Later commands:
 ## Reference Docs
 
 - [Detailed architecture](./docs/noble-ridge-agent-platform-architecture.md)
+- [Gmail OAuth setup for Iris](./docs/gmail-oauth-setup.md)

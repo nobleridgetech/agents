@@ -1,0 +1,14 @@
+[Unit]
+Description=Noble Ridge Iris Discord Gateway
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/mark/github/nrt/agents
+EnvironmentFile=/home/mark/github/nrt/agents/.secrets/iris-discord.env
+ExecStart=/home/mark/github/nrt/agents/.venv/bin/noble-ridge-discord
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
